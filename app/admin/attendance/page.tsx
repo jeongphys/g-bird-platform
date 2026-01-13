@@ -8,12 +8,11 @@ import {
   writeBatch, 
   setDoc, 
   getDoc,
-  onSnapshot 
+  onSnapshot,
+  updateDoc 
 } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
-
-// ... (이 아래 코드는 그대로 두시면 됩니다)
 
 export default function AttendanceAdmin() {
   const router = useRouter();
@@ -73,7 +72,7 @@ export default function AttendanceAdmin() {
 }
 
 // ============================================================================
-// 컴포넌트 1: 학기별 매니저 (투표/QR관리 <-> 명단수정)
+// 컴포넌트 1: 학기별 매니저
 // ============================================================================
 function SemesterManager({ semester }: { semester: string }) {
   const [mode, setMode] = useState<"session" | "edit">("session");
@@ -85,8 +84,6 @@ function SemesterManager({ semester }: { semester: string }) {
 // ============================================================================
 // 컴포넌트 2: 오늘의 운동 관리 (투표 + QR + 실시간 현황 모니터링)
 // ============================================================================
-import { onSnapshot, doc, setDoc } from "firebase/firestore"; // import 추가 필요
-
 function DailySessionManager({ semester, onEditRequest }: any) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [members, setMembers] = useState<any[]>([]);
@@ -111,7 +108,7 @@ function DailySessionManager({ semester, onEditRequest }: any) {
     loadMembers();
   }, [semester]);
 
-  // 2. [핵심] 세션 실시간 동기화 (새로고침 해도 데이터 유지 & 실시간 출석 확인)
+  // 2. [핵심] 세션 실시간 동기화
   useEffect(() => {
     const sessionRef = doc(db, "sessions", date);
     
@@ -119,11 +116,10 @@ function DailySessionManager({ semester, onEditRequest }: any) {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setIsSessionCreated(true);
-        setVoteData(data.voteData || {}); // 기존 투표 데이터 로드
-        setAttendanceData(data.attendances || {}); // 실시간 출석 데이터 로드
+        setVoteData(data.voteData || {});
+        setAttendanceData(data.attendances || {});
         setStaticCode(data.validCode);
         
-        // QR URL 복구
         if (data.validCode) {
           setQrUrl(`${window.location.origin}/attend/check?date=${date}&code=${data.validCode}`);
         }
@@ -131,21 +127,18 @@ function DailySessionManager({ semester, onEditRequest }: any) {
         setIsSessionCreated(false);
         setAttendanceData({});
         setQrUrl("");
-        // 투표 데이터는 초기화하지 않음 (새로 만들 때 편의성 위해)
       }
     });
 
     return () => unsubscribe();
   }, [date]);
 
-  // 투표 일괄 변경
   const setAllVotes = (status: string) => {
     const next = { ...voteData };
     members.forEach(m => next[m.id] = status);
     setVoteData(next);
   };
 
-  // 세션 생성 (또는 업데이트)
   const createOrUpdateSession = async () => {
     const isUpdate = isSessionCreated;
     const msg = isUpdate 
@@ -157,27 +150,21 @@ function DailySessionManager({ semester, onEditRequest }: any) {
 
     try {
       let code = staticCode;
-      // 없을 때만 새로 생성
       if (!code) code = Math.random().toString(36).substring(2, 8).toUpperCase();
       
-      // merge: true 옵션으로 기존 출석 데이터 보호
       await setDoc(doc(db, "sessions", date), {
         date,
         semester,
         type: "qr-static",
         validCode: code,
-        voteData: voteData, // 투표 데이터 업데이트
+        voteData: voteData,
         status: "open",
-        // attendances 필드는 덮어쓰지 않음 (기존 데이터 유지)
         updatedAt: new Date().toISOString()
       }, { merge: true }); 
 
       setStaticCode(code);
-      if (!isSessionCreated) {
-        alert("세션이 생성되었습니다! QR 코드가 표시됩니다.");
-      } else {
-        alert("저장되었습니다.");
-      }
+      if (!isSessionCreated) alert("세션이 생성되었습니다!");
+      else alert("저장되었습니다.");
 
     } catch (e) {
       alert("오류가 발생했습니다.");
@@ -187,7 +174,6 @@ function DailySessionManager({ semester, onEditRequest }: any) {
 
   return (
     <div className="space-y-6">
-      {/* 설정 영역 */}
       <div className="bg-white rounded-lg shadow p-6 print:hidden">
         <div className="flex justify-between items-center mb-4">
           <h2 className="font-bold text-lg">📅 오늘의 운동 현황판</h2>
@@ -208,7 +194,6 @@ function DailySessionManager({ semester, onEditRequest }: any) {
           )}
         </div>
 
-        {/* 통합 현황 테이블 (투표 + 실제출석) */}
         <div className="border rounded bg-white mb-6 overflow-hidden">
           <div className="flex justify-between p-3 bg-gray-50 border-b items-center">
             <span className="font-bold text-sm">📋 출석 현황</span>
@@ -231,13 +216,9 @@ function DailySessionManager({ semester, onEditRequest }: any) {
               <tbody className="divide-y">
                 {members.map(m => {
                   const actual = attendanceData[m.id];
-                  const warning = actual?.warning;
-                  
                   return (
                     <tr key={m.id} className={actual ? "bg-green-50/50" : ""}>
                       <td className="p-2 text-left pl-4 font-bold">{m.name}</td>
-                      
-                      {/* 투표 상태 (라디오 버튼) */}
                       <td className="p-2">
                         <div className="flex justify-center gap-2">
                           {["attend", "absent", "none"].map(type => (
@@ -253,8 +234,6 @@ function DailySessionManager({ semester, onEditRequest }: any) {
                           ))}
                         </div>
                       </td>
-
-                      {/* 실제 출석 상태 (자동 표시) */}
                       <td className="p-2 text-left">
                         {actual ? (
                           <div>
@@ -264,10 +243,9 @@ function DailySessionManager({ semester, onEditRequest }: any) {
                             <span className="text-xs text-gray-400 ml-2">
                               {new Date(actual.time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
                             </span>
-                            {/* 대리 출석 경고 */}
-                            {warning && (
+                            {actual.warning && (
                               <div className="text-xs text-red-600 font-bold mt-1">
-                                🚨 {warning}
+                                🚨 {actual.warning}
                               </div>
                             )}
                           </div>
@@ -288,7 +266,6 @@ function DailySessionManager({ semester, onEditRequest }: any) {
         </button>
       </div>
 
-      {/* QR 코드 출력 영역 */}
       {qrUrl && (
         <div className="bg-white rounded-lg shadow p-8 text-center border-2 border-blue-100">
           <h3 className="text-2xl font-bold mb-6">{date} G-Bird 출석체크</h3>
@@ -313,7 +290,7 @@ function DailySessionManager({ semester, onEditRequest }: any) {
 }
 
 // ============================================================================
-// 컴포넌트 3: 명단 수정 (이전 대화 코드와 동일)
+// 컴포넌트 3: 명단 수정 (기존과 동일)
 // ============================================================================
 function SemesterMemberEditor({ semester, onFinish }: any) {
   const [members, setMembers] = useState<any[]>([]);
@@ -369,7 +346,7 @@ function SemesterMemberEditor({ semester, onFinish }: any) {
 }
 
 // ============================================================================
-// 컴포넌트 4: 전체 기록 뷰 (Master)
+// 컴포넌트 4: 전체 기록 뷰 (기존과 동일)
 // ============================================================================
 function MasterTableView({ semesters }: any) {
   const [members, setMembers] = useState<any[]>([]);
