@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { db } from "@/lib/firebase"; // src 없이 경로 지정
+import { db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 
 export default function Home() {
@@ -11,28 +11,33 @@ export default function Home() {
 
   const handleLogin = async () => {
     if (!name.trim()) return alert("이름을 입력해주세요.");
+
+    // [추가된 부분] 관리자 키워드 입력 시 바로 관리자 페이지로 이동
+    if (name === "admin" || name === "admin1234") {
+      router.push("/admin");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // 입력한 이름으로 DB 조회 (예: '정민우')
+      // 일반 회원 로그인 로직 (기존과 동일)
       const userRef = doc(db, "users", name.trim());
       const userSnap = await getDoc(userRef);
 
       if (userSnap.exists()) {
         const userData = userSnap.data();
         
-        // 브라우저에 임시 저장 (이름, 할인액 등)
         localStorage.setItem("userName", userData.name);
         localStorage.setItem("shuttleDiscount", userData.shuttleDiscount || 0);
         
-        // 활동 회원이 아니면 경고 (선택사항)
         if (!userData.isActive) {
           alert("현재 활동 중인 회원이 아닙니다.");
         } else {
-          router.push("/purchase"); // 구매 페이지로 이동
+          router.push("/purchase");
         }
       } else {
-        alert("등록된 회원이 아닙니다. (예: 홍길동(물리))");
+        alert("등록된 회원이 아닙니다. (예: 정민우)");
       }
     } catch (error) {
       console.error(error);
@@ -42,6 +47,7 @@ export default function Home() {
   };
 
   return (
+    // ... (아래 화면 코드는 기존과 동일하니 건드리지 마세요)
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-lg border border-gray-100">
         <h1 className="text-3xl font-bold text-center text-blue-600 mb-2">G-Bird</h1>
@@ -52,7 +58,7 @@ export default function Home() {
             <label className="block text-sm font-medium text-gray-700 mb-1">성명</label>
             <input
               type="text"
-              placeholder="예: 정민우"
+              placeholder="이름 입력 (관리자는 admin 입력)"
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
