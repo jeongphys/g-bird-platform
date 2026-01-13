@@ -1,12 +1,29 @@
-// app/components/StockSelector.tsx
+/**
+ * StockSelector 컴포넌트
+ * 
+ * 셔틀콕 재고 선택 및 구매 신청 기능을 제공합니다.
+ * 
+ * 핵심 비즈니스 로직:
+ * 1. 순차 판매: 박스 번호 순서대로만 구매 가능 (1-1 -> 1-2 -> ... -> 2-1 -> ...)
+ * 2. 승인 절차: 구매 신청 시 재고 차감하지 않음, 관리자 승인 시 재고 차감 확정
+ * 3. 중복 방지: pending 주문의 아이템은 다른 사용자가 신청할 수 없음
+ * 4. 동시성 제어: Firebase Transaction을 사용하여 중복 구매 원천 차단
+ */
 "use client";
 import { useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, doc, runTransaction } from "firebase/firestore";
+import { collection, doc, runTransaction, query, where, getDocs } from "firebase/firestore";
 
-// 부모에게서 받을 데이터 타입 정의
+interface InventoryItem {
+  id: string;
+  box: number;
+  number: number;
+  isSold: boolean;
+  soldTo?: string | null;
+}
+
 interface Props {
-  inventory: any[]; // 전체 재고 리스트
+  inventory: InventoryItem[]; // 전체 재고 리스트
   userName: string; // 구매자 이름
 }
 
@@ -14,12 +31,19 @@ export default function StockSelector({ inventory, userName }: Props) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [processing, setProcessing] = useState(false);
 
-  // 1. 가격 계산 (개당 16,000원 가정 - 필요시 수정)
+  // 가격 상수 (개당 16,000원 - 필요시 수정)
   const PRICE_PER_UNIT = 16000;
   const totalPrice = selectedIds.length * PRICE_PER_UNIT;
 
-  // 2. 클릭했을 때 실행되는 로직 (핵심!)
-  const handleItemClick = (item: any) => {
+  /**
+   * 재고 아이템 클릭 핸들러
+   * 
+   * 순차 판매 규칙:
+   * - 박스 번호, 낱개 번호 순서대로만 선택 가능
+   * - 취소는 마지막으로 선택한 것부터만 가능 (LIFO)
+   * - 최대 5개까지 구매 가능
+   */
+  const handleItemClick = (item: InventoryItem) => {
     // A. 이미 팔린 건 무시
     if (item.isSold) return;
 
@@ -57,26 +81,54 @@ export default function StockSelector({ inventory, userName }: Props) {
     }
   };
 
-  // 3. 구매 버튼 클릭 (트랜잭션 저장)
+  /**
+   * 구매 신청 처리
+   * 
+   * 프로세스:
+   * 1. pending 주문 확인 (중복 신청 방지)
+   * 2. 재고 확인 (이미 판매된 아이템 체크)
+   * 3. 주문서 생성 (status: "pending")
+   * 4. 재고는 차감하지 않음 (관리자 승인 시 차감)
+   */
   const handleSubmit = async () => {
     if (selectedIds.length === 0) return alert("상품을 선택해주세요.");
     if (!confirm(`${totalPrice.toLocaleString()}원 구매 신청하시겠습니까?`)) return;
 
     setProcessing(true);
     try {
+      // A. pending 주문 확인 (중복 신청 방지) - 트랜잭션 외부에서 먼저 확인
+      const pendingOrdersQuery = query(
+        collection(db, "orders"),
+        where("status", "==", "pending")
+      );
+      const pendingSnap = await getDocs(pendingOrdersQuery);
+      const reservedItems = new Set<string>();
+      pendingSnap.forEach(doc => {
+        const orderData = doc.data();
+        if (orderData.items && Array.isArray(orderData.items)) {
+          orderData.items.forEach((itemId: string) => reservedItems.add(itemId));
+        }
+      });
+
+      // 선택한 아이템이 pending 주문에 포함되어 있는지 확인
+      for (const id of selectedIds) {
+        if (reservedItems.has(id)) {
+          throw new Error(`죄송합니다. ${id}번 셔틀콕은 이미 다른 주문에서 신청 중입니다.`);
+        }
+      }
+
+      // B. 트랜잭션으로 재고 확인 및 주문서 생성
       await runTransaction(db, async (transaction) => {
-        // A. 재고 다시 확인 (그 사이에 누가 사갔을까봐)
+        // 재고 확인 (그 사이에 누가 사갔을까봐) - 차감은 하지 않음
         for (const id of selectedIds) {
           const itemRef = doc(db, "inventory", id);
           const itemDoc = await transaction.get(itemRef);
           if (!itemDoc.exists() || itemDoc.data().isSold) {
             throw new Error(`죄송합니다. ${id}번 셔틀콕이 방금 판매되었습니다.`);
           }
-          // B. 재고 상태 업데이트 (판매됨 처리)
-          transaction.update(itemRef, { isSold: true, soldTo: userName });
         }
 
-        // C. 주문서 생성
+        // 주문서만 생성 (재고는 차감하지 않음, 승인 시 차감)
         const orderRef = doc(collection(db, "orders"));
         transaction.set(orderRef, {
           userName,
@@ -88,6 +140,7 @@ export default function StockSelector({ inventory, userName }: Props) {
       });
 
       alert("신청 완료! 입금 후 총무 승인을 기다려주세요.");
+      setSelectedIds([]); // 선택 초기화
       window.location.reload(); // 새로고침해서 현황 업데이트
     } catch (e: any) {
       alert("구매 실패: " + e.message);

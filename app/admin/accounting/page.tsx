@@ -50,6 +50,11 @@ export default function AccountingPage() {
 
 // ============================================================================
 // 1. 주문 관리 컴포넌트 (승인/반려)
+// 
+// 기능:
+// - pending 상태의 주문 목록 조회
+// - 입금 확인 후 주문 승인 (재고 차감 확정)
+// - 주문 반려 (재고는 이미 차감되지 않았으므로 복구 불필요)
 // ============================================================================
 function OrderManager() {
   const [orders, setOrders] = useState<any[]>([]);
@@ -75,45 +80,69 @@ function OrderManager() {
 
   useEffect(() => { fetchOrders(); }, []);
 
-  // 승인 처리
-  const handleApprove = async (id: string) => {
+  /**
+   * 주문 승인 처리
+   * 
+   * 프로세스:
+   * 1. 주문 상태를 "approved"로 변경
+   * 2. 재고 차감 (isSold: true, soldTo: userName)
+   * 
+   * 중요: 구매 신청 시점에는 재고를 차감하지 않았으므로,
+   * 승인 시점에 재고를 차감하여 확정합니다.
+   */
+  const handleApprove = async (order: any) => {
     if(!confirm("입금 확인 완료? 승인하시겠습니까?")) return;
-    try {
-      await updateDoc(doc(db, "orders", id), { 
-        status: "approved", 
-        approvedAt: new Date().toISOString() 
-      });
-      alert("승인되었습니다.");
-      fetchOrders();
-    } catch(e) {
-      alert("처리 실패");
-    }
-  };
-
-  // 반려 처리 (재고 복구 포함)
-  const handleReject = async (order: any) => {
-    const reason = prompt("반려 사유를 입력하세요 (예: 미입금, 중복주문)");
-    if(!reason) return;
-
     try {
       const batch = writeBatch(db);
       
       // 1. 주문 상태 변경
       batch.update(doc(db, "orders", order.id), { 
-        status: "rejected", 
-        rejectReason: reason 
+        status: "approved", 
+        approvedAt: new Date().toISOString() 
       });
 
-      // 2. 재고 복구 (팔림 -> 안팔림)
+      // 2. 재고 차감 (승인 시 확정)
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach((itemId: string) => {
           const itemRef = doc(db, "inventory", itemId);
-          batch.update(itemRef, { isSold: false, soldTo: null });
+          batch.update(itemRef, { 
+            isSold: true, 
+            soldTo: order.userName 
+          });
         });
       }
 
       await batch.commit();
-      alert("반려 및 재고 복구 완료");
+      alert("승인되었습니다. 재고가 차감되었습니다.");
+      fetchOrders();
+    } catch(e) {
+      console.error(e);
+      alert("처리 실패");
+    }
+  };
+
+  /**
+   * 주문 반려 처리
+   * 
+   * 프로세스:
+   * 1. 주문 상태를 "rejected"로 변경
+   * 2. 반려 사유 기록
+   * 
+   * 중요: 구매 신청 시점에 재고를 차감하지 않았으므로,
+   * 반려 시 재고 복구가 필요하지 않습니다.
+   */
+  const handleReject = async (order: any) => {
+    const reason = prompt("반려 사유를 입력하세요 (예: 미입금, 중복주문)");
+    if(!reason) return;
+
+    try {
+      // 주문 상태만 변경 (재고는 이미 차감되지 않았으므로 복구 불필요)
+      await updateDoc(doc(db, "orders", order.id), { 
+        status: "rejected", 
+        rejectReason: reason 
+      });
+
+      alert("반려 처리되었습니다.");
       fetchOrders();
     } catch (e) {
       console.error(e);
@@ -163,7 +192,7 @@ function OrderManager() {
                   반려
                 </button>
                 <button 
-                  onClick={() => handleApprove(order.id)} 
+                  onClick={() => handleApprove(order)} 
                   className="flex-1 bg-blue-600 text-white py-2 rounded font-bold text-sm hover:bg-blue-700"
                 >
                   승인 (입금확인)
