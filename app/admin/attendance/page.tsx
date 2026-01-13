@@ -1,9 +1,19 @@
 "use client";
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { collection, getDocs, doc, writeBatch, setDoc, getDoc } from "firebase/firestore";
+import { 
+  collection, 
+  getDocs, 
+  doc, 
+  writeBatch, 
+  setDoc, 
+  getDoc,
+  onSnapshot 
+} from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
+
+// ... (이 아래 코드는 그대로 두시면 됩니다)
 
 export default function AttendanceAdmin() {
   const router = useRouter();
