@@ -73,33 +73,60 @@ function SemesterManager({ semester }: { semester: string }) {
 }
 
 // ============================================================================
-// 컴포넌트 2: 오늘의 운동 관리 (투표 입력 + QR 생성)
+// 컴포넌트 2: 오늘의 운동 관리 (투표 + QR + 실시간 현황 모니터링)
 // ============================================================================
+import { onSnapshot, doc, setDoc } from "firebase/firestore"; // import 추가 필요
+
 function DailySessionManager({ semester, onEditRequest }: any) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [members, setMembers] = useState<any[]>([]);
+  
+  // 상태 관리
   const [voteData, setVoteData] = useState<{[key:string]: string}>({});
-  const [qrUrl, setQrUrl] = useState("");
+  const [attendanceData, setAttendanceData] = useState<{[key:string]: any}>({}); // 실제 출석 데이터
   const [staticCode, setStaticCode] = useState("");
+  const [qrUrl, setQrUrl] = useState("");
+  const [isSessionCreated, setIsSessionCreated] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // 학기 활동 회원 불러오기
+  // 1. 회원 목록 로드
   useEffect(() => {
     const loadMembers = async () => {
       const snap = await getDocs(collection(db, "users"));
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      // 해당 학기 활동(O)인 사람만 필터링
       const active = list.filter((m: any) => m.history?.[semester] === "O");
       active.sort((a: any, b: any) => a.name.localeCompare(b.name));
       setMembers(active);
-
-      // 기본 투표값: 미투표
-      const initVotes: any = {};
-      active.forEach((m: any) => initVotes[m.id] = "none");
-      setVoteData(initVotes);
     };
     loadMembers();
   }, [semester]);
+
+  // 2. [핵심] 세션 실시간 동기화 (새로고침 해도 데이터 유지 & 실시간 출석 확인)
+  useEffect(() => {
+    const sessionRef = doc(db, "sessions", date);
+    
+    const unsubscribe = onSnapshot(sessionRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setIsSessionCreated(true);
+        setVoteData(data.voteData || {}); // 기존 투표 데이터 로드
+        setAttendanceData(data.attendances || {}); // 실시간 출석 데이터 로드
+        setStaticCode(data.validCode);
+        
+        // QR URL 복구
+        if (data.validCode) {
+          setQrUrl(`${window.location.origin}/attend/check?date=${date}&code=${data.validCode}`);
+        }
+      } else {
+        setIsSessionCreated(false);
+        setAttendanceData({});
+        setQrUrl("");
+        // 투표 데이터는 초기화하지 않음 (새로 만들 때 편의성 위해)
+      }
+    });
+
+    return () => unsubscribe();
+  }, [date]);
 
   // 투표 일괄 변경
   const setAllVotes = (status: string) => {
@@ -108,31 +135,39 @@ function DailySessionManager({ semester, onEditRequest }: any) {
     setVoteData(next);
   };
 
-  // 세션 생성 (QR 생성)
-  const createSession = async () => {
-    if (!confirm(`${date} 출석 세션을 생성하시겠습니까?`)) return;
+  // 세션 생성 (또는 업데이트)
+  const createOrUpdateSession = async () => {
+    const isUpdate = isSessionCreated;
+    const msg = isUpdate 
+      ? "투표 현황을 수정하시겠습니까?" 
+      : `${date} 출석 세션을 생성하시겠습니까?`;
+      
+    if (!confirm(msg)) return;
     setIsLoading(true);
 
     try {
-      // 정적 코드 생성 (랜덤 6자리 문자)
-      const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+      let code = staticCode;
+      // 없을 때만 새로 생성
+      if (!code) code = Math.random().toString(36).substring(2, 8).toUpperCase();
       
-      // DB 저장
+      // merge: true 옵션으로 기존 출석 데이터 보호
       await setDoc(doc(db, "sessions", date), {
         date,
         semester,
         type: "qr-static",
         validCode: code,
-        voteData: voteData, // 투표 결과 저장
-        attendances: {},    // 실제 출석은 비어있음 (QR찍으면 채워짐)
+        voteData: voteData, // 투표 데이터 업데이트
         status: "open",
-        createdAt: new Date().toISOString()
-      });
+        // attendances 필드는 덮어쓰지 않음 (기존 데이터 유지)
+        updatedAt: new Date().toISOString()
+      }, { merge: true }); 
 
       setStaticCode(code);
-      // QR 링크 생성 (현재 도메인 자동 감지)
-      const url = `${window.location.origin}/attend/check?date=${date}&code=${code}`;
-      setQrUrl(url);
+      if (!isSessionCreated) {
+        alert("세션이 생성되었습니다! QR 코드가 표시됩니다.");
+      } else {
+        alert("저장되었습니다.");
+      }
 
     } catch (e) {
       alert("오류가 발생했습니다.");
@@ -142,61 +177,108 @@ function DailySessionManager({ semester, onEditRequest }: any) {
 
   return (
     <div className="space-y-6">
-      {/* A. 투표 입력 및 세션 설정 (인쇄 시 숨김) */}
+      {/* 설정 영역 */}
       <div className="bg-white rounded-lg shadow p-6 print:hidden">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="font-bold text-lg">📅 오늘의 운동 설정</h2>
+          <h2 className="font-bold text-lg">📅 오늘의 운동 현황판</h2>
           <button onClick={onEditRequest} className="text-sm bg-white border px-3 py-1 rounded hover:bg-gray-50">
             ⚙️ 명단 수정
           </button>
         </div>
 
-        <div className="mb-4">
-          <label className="block text-xs font-bold text-gray-500 mb-1">날짜 선택</label>
-          <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="border p-2 rounded text-black w-full md:w-auto"/>
+        <div className="mb-4 flex items-center gap-4">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1">날짜</label>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)} className="border p-2 rounded text-black"/>
+          </div>
+          {isSessionCreated && (
+            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded font-bold animate-pulse">
+              ● 실시간 모니터링 중
+            </span>
+          )}
         </div>
 
-        {/* 투표 테이블 */}
-        <div className="border rounded bg-white mb-6">
+        {/* 통합 현황 테이블 (투표 + 실제출석) */}
+        <div className="border rounded bg-white mb-6 overflow-hidden">
           <div className="flex justify-between p-3 bg-gray-50 border-b items-center">
-            <span className="font-bold text-sm">🗳 투표 현황 (사전 입력)</span>
+            <span className="font-bold text-sm">📋 출석 현황</span>
             <div className="space-x-1">
-              <button onClick={()=>setAllVotes("attend")} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-bold">전원참석</button>
-              <button onClick={()=>setAllVotes("absent")} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded font-bold">전원불참</button>
+              <span className="text-xs text-gray-400 mr-2">투표 일괄적용:</span>
+              <button onClick={()=>setAllVotes("attend")} className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-bold">참석</button>
+              <button onClick={()=>setAllVotes("absent")} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded font-bold">불참</button>
             </div>
           </div>
-          <div className="max-h-60 overflow-y-auto">
+          
+          <div className="max-h-[500px] overflow-y-auto">
             <table className="w-full text-sm text-center">
-              <thead className="text-gray-500 bg-gray-50 sticky top-0">
+              <thead className="text-gray-500 bg-gray-50 sticky top-0 z-10 shadow-sm">
                 <tr>
-                  <th className="p-2 text-left pl-4">이름</th>
-                  <th className="p-2 text-green-700">참석</th>
-                  <th className="p-2 text-red-700">불참</th>
-                  <th className="p-2 text-gray-400">미투표</th>
+                  <th className="p-2 text-left pl-4 w-24">이름</th>
+                  <th className="p-2 w-40">🗳 투표</th>
+                  <th className="p-2">📍 실제 출석 (QR)</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {members.map(m => (
-                  <tr key={m.id}>
-                    <td className="p-2 text-left pl-4 font-bold">{m.name}</td>
-                    {["attend", "absent", "none"].map(type => (
-                      <td key={type} className="p-2" onClick={()=>setVoteData(prev=>({...prev, [m.id]: type}))}>
-                         <input type="radio" checked={voteData[m.id] === type} readOnly className={`cursor-pointer w-4 h-4 ${type==='attend'?'accent-green-600':type==='absent'?'accent-red-600':'accent-gray-400'}`} />
+                {members.map(m => {
+                  const actual = attendanceData[m.id];
+                  const warning = actual?.warning;
+                  
+                  return (
+                    <tr key={m.id} className={actual ? "bg-green-50/50" : ""}>
+                      <td className="p-2 text-left pl-4 font-bold">{m.name}</td>
+                      
+                      {/* 투표 상태 (라디오 버튼) */}
+                      <td className="p-2">
+                        <div className="flex justify-center gap-2">
+                          {["attend", "absent", "none"].map(type => (
+                            <label key={type} className="cursor-pointer flex items-center">
+                              <input 
+                                type="radio" 
+                                name={`vote-${m.id}`}
+                                checked={voteData[m.id] === type} 
+                                onChange={()=>setVoteData(prev=>({...prev, [m.id]: type}))}
+                                className={`w-4 h-4 ${type==='attend'?'accent-green-600':type==='absent'?'accent-red-600':'accent-gray-400'}`}
+                              />
+                            </label>
+                          ))}
+                        </div>
                       </td>
-                    ))}
-                  </tr>
-                ))}
+
+                      {/* 실제 출석 상태 (자동 표시) */}
+                      <td className="p-2 text-left">
+                        {actual ? (
+                          <div>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                              ✅ 출석완료
+                            </span>
+                            <span className="text-xs text-gray-400 ml-2">
+                              {new Date(actual.time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                            </span>
+                            {/* 대리 출석 경고 */}
+                            {warning && (
+                              <div className="text-xs text-red-600 font-bold mt-1">
+                                🚨 {warning}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-300">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
 
-        <button onClick={createSession} disabled={isLoading} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700">
-          {isLoading ? "생성 중..." : "설정 저장 및 QR 생성하기"}
+        <button onClick={createOrUpdateSession} disabled={isLoading} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700">
+          {isSessionCreated ? "투표 현황 저장하기" : "세션 생성 및 QR 띄우기"}
         </button>
       </div>
 
-      {/* B. QR 코드 출력 영역 (생성되면 보임) */}
+      {/* QR 코드 출력 영역 */}
       {qrUrl && (
         <div className="bg-white rounded-lg shadow p-8 text-center border-2 border-blue-100">
           <h3 className="text-2xl font-bold mb-6">{date} G-Bird 출석체크</h3>
@@ -207,11 +289,11 @@ function DailySessionManager({ semester, onEditRequest }: any) {
           
           <div className="print:hidden space-y-2">
             <p className="text-sm text-gray-600 mb-4">
-              위 코드를 인쇄하거나 화면을 띄워두세요.<br/>
-              회원들은 카메라로 스캔하여 출석할 수 있습니다.
+              회원들은 카메라로 위 코드를 스캔하세요.<br/>
+              (관리자는 위 현황판에서 실시간으로 출석 여부를 확인할 수 있습니다)
             </p>
             <button onClick={() => window.print()} className="bg-gray-800 text-white px-6 py-2 rounded font-bold hover:bg-black">
-              🖨 인쇄하기
+              🖨 QR 인쇄하기
             </button>
           </div>
         </div>
