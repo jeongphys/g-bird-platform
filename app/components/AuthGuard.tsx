@@ -15,7 +15,7 @@ export default function AuthGuard({
   children, 
   requireAuth = true, 
   requireAdmin = false,
-  redirectTo = "/auth/login"
+  redirectTo = "/"
 }: AuthGuardProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);

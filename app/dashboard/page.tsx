@@ -24,7 +24,7 @@ export default function DashboardPage() {
   const checkUser = async () => {
     const { userName: storedName, userId } = getUserFromLocalStorage();
     if (!storedName && !userId) {
-      router.push("/auth/login");
+      router.push("/");
       return;
     }
 
@@ -191,29 +191,29 @@ function MemberDashboard({ userName }: { userName: string }) {
       await signOut();
       // 로컬 스토리지 클리어
       clearLocalStorage();
-      // 로그인 페이지로 이동
-      router.push("/auth/login");
+      // 시작 페이지로 이동
+      router.push("/");
     } catch (error) {
       console.error("Logout error:", error);
-      // 에러가 발생해도 로컬 스토리지는 클리어하고 로그인 페이지로 이동
+      // 에러가 발생해도 로컬 스토리지는 클리어하고 시작 페이지로 이동
       clearLocalStorage();
-      router.push("/auth/login");
+      router.push("/");
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* 헤더 */}
-      <div className="bg-white p-4 shadow sticky top-0 z-20">
-        <div className="flex justify-between items-center">
+      <div className="bg-white p-3 md:p-4 shadow sticky top-0 z-20">
+        <div className="flex justify-between items-center gap-2">
           <button 
             onClick={handleLogout} 
-            className="text-red-600 font-bold hover:text-red-700 transition"
+            className="text-red-600 font-bold hover:text-red-700 transition text-sm md:text-base"
           >
             로그아웃
           </button>
-          <h1 className="text-xl font-bold">{userName} 님으로 로그인 되었습니다.</h1>
-          <div className="w-20"></div>
+          <h1 className="text-sm md:text-xl font-bold text-center flex-1 truncate">{userName} 님으로 로그인 되었습니다.</h1>
+          <div className="w-16 md:w-20"></div>
         </div>
       </div>
 
@@ -233,7 +233,7 @@ function MemberDashboard({ userName }: { userName: string }) {
             <QuickLink title="셔틀콕 구매" onClick={() => router.push("/purchase")} color="bg-blue-600" />
             <QuickLink title="공지사항" onClick={() => router.push("/notice")} color="bg-orange-600" />
             <QuickLink title="앨범" onClick={() => router.push("/album")} color="bg-purple-600" />
-            <QuickLink title="회원정보" onClick={() => router.push("/profile")} color="bg-green-600" />
+            <QuickLink title="출석" onClick={() => router.push("/attendance")} color="bg-green-600" />
           </div>
         </div>
 

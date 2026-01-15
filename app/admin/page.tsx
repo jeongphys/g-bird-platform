@@ -54,7 +54,7 @@ export default function AdminHub() {
       await signOut();
       sessionStorage.removeItem("adminAuth");
       localStorage.clear();
-      router.push("/auth/login");
+      router.push("/");
     } catch (error) {
       console.error("Logout error:", error);
     }
