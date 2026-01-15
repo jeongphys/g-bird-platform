@@ -125,8 +125,8 @@ export default function AdminHub() {
       </div>
       
       <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
-        <MenuCard title="📋 출석·회원" desc="활동정보 및 학기 관리" onClick={() => router.push("/admin/attendance")} color="bg-blue-600" />
-        <MenuCard title="👥 회원 관리" desc="회원 등록/수정/삭제" onClick={() => router.push("/admin/members")} color="bg-purple-600" />
+        <MenuCard title="📋 출석" desc="학기별 출석 관리" onClick={() => router.push("/admin/attendance")} color="bg-blue-600" />
+        <MenuCard title="👥 회원" desc="회원 관리 및 활동정보" onClick={() => router.push("/admin/members")} color="bg-purple-600" />
         <MenuCard title="💰 회계·재고" desc="셔틀콕 주문 및 재고" onClick={() => router.push("/admin/accounting")} color="bg-green-600" />
         <MenuCard title="🏸 경기 운영" desc="(준비중)" onClick={() => router.push("/admin/game")} color="bg-gray-400" />
         <MenuCard title="🎓 레슨 관리" desc="(준비중)" onClick={() => router.push("/admin/lesson")} color="bg-gray-400" />
