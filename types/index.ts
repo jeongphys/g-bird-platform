@@ -11,6 +11,9 @@ export interface User {
   createdAt?: Date;
   isAdmin?: boolean;
   photoURL?: string;
+  expelled?: boolean;
+  honoraryStartIndex?: number | null;
+  status?: "active" | "inactive" | "honorary" | "expelled";
 }
 
 export interface Session {

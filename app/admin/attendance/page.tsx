@@ -409,13 +409,23 @@ function MasterTableView({ semesters }: MasterTableViewProps) {
     return members.find(m => m.id === memberId)?.history?.[semester] || "";
   };
 
-  const getCellStyle = (value: string): string => {
+  const getCellStyle = (value: string, member: User, semester: string, semesterIndex: number): string => {
     if (!value || value === "-") return "bg-gray-50 text-gray-400";
     if (value === "O") return "bg-green-100 text-green-800 font-bold";
     if (value === "X") return "bg-gray-200 text-gray-600";
-    if (value.includes("명예회원")) return "bg-blue-100 text-blue-800";
-    if (value.includes("선발")) return "bg-yellow-100 text-yellow-800";
-    if (value.includes("출석 미달") || value.includes("출석미달") || value.includes("제적")) return "bg-red-100 text-red-800";
+    
+    // 명예회원: 명예회원 시작 학기부터 금색 표시
+    if (value === "명예회원") {
+      const honoraryStart = (member as any).honoraryStartIndex;
+      if (honoraryStart !== null && honoraryStart !== undefined && semesterIndex >= honoraryStart) {
+        return "bg-yellow-200 text-yellow-900 font-bold";
+      }
+      return "bg-yellow-100 text-yellow-800";
+    }
+    
+    // 제적 관련
+    if (value === "제적") return "bg-red-100 text-red-800 font-bold";
+    
     return "bg-white text-gray-800";
   };
 
@@ -498,20 +508,31 @@ function MasterTableView({ semesters }: MasterTableViewProps) {
     }
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-bold">활동정보</h2>
-        {hasChanges && (
-          <button
-            onClick={handleSaveAll}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700"
-          >
-            💾 저장하기
-          </button>
-        )}
+  if (semesters.length === 0) {
+    return (
+      <div className="bg-white rounded shadow p-8 text-center">
+        <p className="text-gray-600 mb-4">학기 정보가 없습니다.</p>
+        <p className="text-sm text-gray-500">상단의 "+ 학기추가" 버튼을 눌러 학기를 추가해주세요.</p>
       </div>
-      
+    );
+  }
+
+  if (members.length === 0) {
+    return (
+      <div className="bg-white rounded shadow p-8 text-center">
+        <p className="text-gray-600 mb-4">회원 데이터가 없습니다.</p>
+        <p className="text-sm text-gray-500">회원 관리 페이지에서 회원을 등록해주세요.</p>
+      </div>
+    );
+  }
+
+  // 제적 회원과 일반 회원 분리
+  const activeMembers = members.filter(m => !(m as any).expelled);
+  const expelledMembers = members.filter(m => (m as any).expelled);
+
+  const renderTable = (memberList: User[], title: string) => (
+    <div className="space-y-2">
+      <h3 className="text-md font-bold text-gray-700">{title}</h3>
       <div className="bg-white rounded shadow overflow-x-auto">
         <table className="w-full text-sm text-left whitespace-nowrap">
           <thead className="bg-gray-100 border-b sticky top-0 z-10">
@@ -523,13 +544,13 @@ function MasterTableView({ semesters }: MasterTableViewProps) {
             </tr>
           </thead>
           <tbody>
-            {members.map(m => (
+            {memberList.map(m => (
               <tr key={m.id} className="border-b hover:bg-gray-50">
                 <td className="p-3 sticky left-0 bg-white border-r font-bold z-10">{m.name}</td>
-                {semesters.map((s: string) => {
+                {semesters.map((s: string, idx: number) => {
                   const isEditing = editingCell?.memberId === m.id && editingCell?.semester === s;
                   const value = getCellValue(m.id, s);
-                  const cellStyle = getCellStyle(value);
+                  const cellStyle = getCellStyle(value, m, s, idx);
                   
                   return (
                     <td
@@ -581,6 +602,32 @@ function MasterTableView({ semesters }: MasterTableViewProps) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-lg font-bold">활동정보</h2>
+        {hasChanges && (
+          <button
+            onClick={handleSaveAll}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700"
+          >
+            💾 저장하기
+          </button>
+        )}
+      </div>
+      
+      {/* 일반 회원 테이블 */}
+      {activeMembers.length > 0 && renderTable(activeMembers, "일반 회원")}
+      
+      {/* 제적 회원 테이블 */}
+      {expelledMembers.length > 0 && (
+        <div className="mt-6">
+          {renderTable(expelledMembers, "제적 회원")}
+        </div>
+      )}
     </div>
   );
 }
