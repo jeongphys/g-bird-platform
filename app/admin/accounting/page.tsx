@@ -56,8 +56,10 @@ export default function AccountingPage() {
 // - 입금 확인 후 주문 승인 (재고 차감 확정)
 // - 주문 반려 (재고는 이미 차감되지 않았으므로 복구 불필요)
 // ============================================================================
+import { Order } from "@/types";
+
 function OrderManager() {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
 
   // 대기중(pending)인 주문만 불러오기
@@ -66,10 +68,10 @@ function OrderManager() {
     try {
       const q = query(collection(db, "orders"), where("status", "==", "pending"));
       const snap = await getDocs(q);
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
       
       // 최신순 정렬 (createdAt 문자열 기준)
-      list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setOrders(list);
     } catch (e) {
       console.error(e);
@@ -90,7 +92,7 @@ function OrderManager() {
    * 중요: 구매 신청 시점에는 재고를 차감하지 않았으므로,
    * 승인 시점에 재고를 차감하여 확정합니다.
    */
-  const handleApprove = async (order: any) => {
+  const handleApprove = async (order: Order) => {
     if(!confirm("입금 확인 완료? 승인하시겠습니까?")) return;
     try {
       const batch = writeBatch(db);
@@ -131,7 +133,7 @@ function OrderManager() {
    * 중요: 구매 신청 시점에 재고를 차감하지 않았으므로,
    * 반려 시 재고 복구가 필요하지 않습니다.
    */
-  const handleReject = async (order: any) => {
+  const handleReject = async (order: Order) => {
     const reason = prompt("반려 사유를 입력하세요 (예: 미입금, 중복주문)");
     if(!reason) return;
 
@@ -209,16 +211,18 @@ function OrderManager() {
 // ============================================================================
 // 2. 재고 관리 컴포넌트
 // ============================================================================
+import { InventoryItem } from "@/types";
+
 function InventoryManager() {
-  const [stock, setStock] = useState<any[]>([]);
+  const [stock, setStock] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   const fetchStock = async () => {
     setLoading(true);
     const snap = await getDocs(collection(db, "inventory"));
-    const list = snap.docs.map(d => d.data());
+    const list = snap.docs.map(d => d.data() as InventoryItem);
     // 정렬: 박스 -> 번호
-    list.sort((a: any, b: any) => (a.box - b.box) || (a.number - b.number));
+    list.sort((a, b) => (a.box - b.box) || (a.number - b.number));
     setStock(list);
     setLoading(false);
   };

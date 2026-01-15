@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
+import { User, AttendanceRecord } from "@/types";
 
 export default function AttendanceAdmin() {
   const router = useRouter();
@@ -51,6 +52,9 @@ export default function AttendanceAdmin() {
           <button onClick={() => setActiveTab("master")} className={`whitespace-nowrap px-4 py-2 rounded-full font-bold text-sm transition ${activeTab === "master" ? "bg-blue-800 text-white" : "bg-gray-100 text-gray-600"}`}>
             📂 전체기록
           </button>
+          <button onClick={() => setActiveTab("stats")} className={`whitespace-nowrap px-4 py-2 rounded-full font-bold text-sm transition ${activeTab === "stats" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600"}`}>
+            📊 통계
+          </button>
           {semesters.map(sem => (
             <button key={sem} onClick={() => setActiveTab(sem)} className={`whitespace-nowrap px-4 py-2 rounded-full font-bold text-sm transition ${activeTab === sem ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"}`}>
               {sem}
@@ -63,6 +67,16 @@ export default function AttendanceAdmin() {
       <div className="p-4 max-w-4xl mx-auto">
         {activeTab === "master" ? (
           <MasterTableView semesters={semesters} />
+        ) : activeTab === "stats" ? (
+          <div className="text-center py-10">
+            <p className="text-gray-600 mb-4">출석 통계 페이지로 이동합니다.</p>
+            <button 
+              onClick={() => router.push("/admin/attendance/stats")}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-700"
+            >
+              통계 보기
+            </button>
+          </div>
         ) : (
           <SemesterManager semester={activeTab} />
         )}
@@ -74,7 +88,11 @@ export default function AttendanceAdmin() {
 // ============================================================================
 // 컴포넌트 1: 학기별 매니저
 // ============================================================================
-function SemesterManager({ semester }: { semester: string }) {
+interface SemesterManagerProps {
+  semester: string;
+}
+
+function SemesterManager({ semester }: SemesterManagerProps) {
   const [mode, setMode] = useState<"session" | "edit">("session");
 
   if (mode === "edit") return <SemesterMemberEditor semester={semester} onFinish={() => setMode("session")} />;
@@ -84,13 +102,18 @@ function SemesterManager({ semester }: { semester: string }) {
 // ============================================================================
 // 컴포넌트 2: 오늘의 운동 관리 (투표 + QR + 실시간 현황 모니터링)
 // ============================================================================
-function DailySessionManager({ semester, onEditRequest }: any) {
+interface DailySessionManagerProps {
+  semester: string;
+  onEditRequest: () => void;
+}
+
+function DailySessionManager({ semester, onEditRequest }: DailySessionManagerProps) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [members, setMembers] = useState<any[]>([]);
+  const [members, setMembers] = useState<User[]>([]);
   
   // 상태 관리
   const [voteData, setVoteData] = useState<{[key:string]: string}>({});
-  const [attendanceData, setAttendanceData] = useState<{[key:string]: any}>({}); // 실제 출석 데이터
+  const [attendanceData, setAttendanceData] = useState<{[key:string]: AttendanceRecord}>({}); // 실제 출석 데이터
   const [staticCode, setStaticCode] = useState("");
   const [qrUrl, setQrUrl] = useState("");
   const [isSessionCreated, setIsSessionCreated] = useState(false);
@@ -100,9 +123,9 @@ function DailySessionManager({ semester, onEditRequest }: any) {
   useEffect(() => {
     const loadMembers = async () => {
       const snap = await getDocs(collection(db, "users"));
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const active = list.filter((m: any) => m.history?.[semester] === "O");
-      active.sort((a: any, b: any) => a.name.localeCompare(b.name));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as User));
+      const active = list.filter((m) => m.history?.[semester] === "O");
+      active.sort((a, b) => a.name.localeCompare(b.name));
       setMembers(active);
     };
     loadMembers();
@@ -241,7 +264,7 @@ function DailySessionManager({ semester, onEditRequest }: any) {
                               ✅ 출석완료
                             </span>
                             <span className="text-xs text-gray-400 ml-2">
-                              {new Date(actual.time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                              {actual.time ? new Date(actual.time).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ''}
                             </span>
                             {actual.warning && (
                               <div className="text-xs text-red-600 font-bold mt-1">
@@ -292,19 +315,24 @@ function DailySessionManager({ semester, onEditRequest }: any) {
 // ============================================================================
 // 컴포넌트 3: 명단 수정 (기존과 동일)
 // ============================================================================
-function SemesterMemberEditor({ semester, onFinish }: any) {
-  const [members, setMembers] = useState<any[]>([]);
+interface SemesterMemberEditorProps {
+  semester: string;
+  onFinish: () => void;
+}
+
+function SemesterMemberEditor({ semester, onFinish }: SemesterMemberEditorProps) {
+  const [members, setMembers] = useState<User[]>([]);
   const [localCheck, setLocalCheck] = useState<{[key:string]: boolean}>({});
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     const load = async () => {
       const snap = await getDocs(collection(db, "users"));
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      list.sort((a: any, b: any) => a.name.localeCompare(b.name));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as User));
+      list.sort((a, b) => a.name.localeCompare(b.name));
       setMembers(list);
-      const checks: any = {};
-      list.forEach((m: any) => { if (m.history?.[semester] === "O") checks[m.id] = true; });
+      const checks: {[key: string]: boolean} = {};
+      list.forEach((m) => { if (m.history?.[semester] === "O") checks[m.id] = true; });
       setLocalCheck(checks);
     };
     load();
@@ -348,12 +376,16 @@ function SemesterMemberEditor({ semester, onFinish }: any) {
 // ============================================================================
 // 컴포넌트 4: 전체 기록 뷰 (기존과 동일)
 // ============================================================================
-function MasterTableView({ semesters }: any) {
+interface MasterTableViewProps {
+  semesters: string[];
+}
+
+function MasterTableView({ semesters }: MasterTableViewProps) {
   const [members, setMembers] = useState<any[]>([]);
   useEffect(() => {
     getDocs(collection(db, "users")).then(snap => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      list.sort((a: any, b: any) => a.name.localeCompare(b.name));
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as User));
+      list.sort((a, b) => a.name.localeCompare(b.name));
       setMembers(list);
     });
   }, []);

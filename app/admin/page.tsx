@@ -1,22 +1,76 @@
 // app/admin/page.tsx
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { getUserFromLocalStorage, getCurrentUser, isAdmin, signOut } from "@/lib/auth";
+import AuthGuard from "@/app/components/AuthGuard";
 
 export default function AdminHub() {
   const [password, setPassword] = useState("");
   const [isAuth, setIsAuth] = useState(false);
+  const [checking, setChecking] = useState(true);
   const router = useRouter();
+
+  useEffect(() => {
+    const checkAdminAuth = async () => {
+      const { userName, userId, authMethod } = getUserFromLocalStorage();
+      const firebaseUser = getCurrentUser();
+      
+      // 세션 스토리지 확인 (기존 방식)
+      const sessionAuth = sessionStorage.getItem("adminAuth");
+      
+      // 관리자 키워드 확인
+      if (userName === "admin" || userName === "admin1234" || userId === "admin" || userId === "admin1234" || sessionAuth === "true") {
+        setIsAuth(true);
+        setChecking(false);
+        return;
+      }
+      
+      // Firebase Auth 사용자이고 관리자 권한 확인
+      if (firebaseUser) {
+        const adminStatus = await isAdmin(firebaseUser.uid);
+        if (adminStatus) {
+          setIsAuth(true);
+        }
+      }
+      
+      setChecking(false);
+    };
+    
+    checkAdminAuth();
+  }, []);
 
   const handleLogin = () => {
     if (password === "admin1234") {
       setIsAuth(true);
-      // 로그인 상태 유지 (세션 스토리지 등)는 생략하고 간단히 구현
       sessionStorage.setItem("adminAuth", "true");
     } else {
       alert("비밀번호가 틀렸습니다.");
     }
   };
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      sessionStorage.removeItem("adminAuth");
+      localStorage.clear();
+      router.push("/auth/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
+
+  // 로딩 중
+  if (checking) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-100 p-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">확인 중...</p>
+        </div>
+      </div>
+    );
+  }
 
   // 로그인 전
   if (!isAuth) {
@@ -24,10 +78,26 @@ export default function AdminHub() {
       <div className="flex h-screen items-center justify-center bg-gray-100 p-4">
         <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-sm text-center">
           <h1 className="text-2xl font-bold mb-6 text-blue-900">G-Bird Admin</h1>
-          <input type="password" value={password} onChange={e=>setPassword(e.target.value)} 
-            className="border p-4 mb-4 w-full rounded-lg text-lg text-black" placeholder="비밀번호" 
-            onKeyDown={e=>e.key==='Enter' && handleLogin()} />
-          <button onClick={handleLogin} className="bg-blue-800 text-white w-full py-4 rounded-lg font-bold text-lg">접속</button>
+          <input 
+            type="password" 
+            value={password} 
+            onChange={e=>setPassword(e.target.value)} 
+            className="border p-4 mb-4 w-full rounded-lg text-lg text-black" 
+            placeholder="비밀번호" 
+            onKeyDown={e=>e.key==='Enter' && handleLogin()} 
+          />
+          <button 
+            onClick={handleLogin} 
+            className="bg-blue-800 text-white w-full py-4 rounded-lg font-bold text-lg hover:bg-blue-900"
+          >
+            접속
+          </button>
+          <button 
+            onClick={() => router.push("/auth/login")} 
+            className="mt-2 text-sm text-gray-500 hover:text-gray-700"
+          >
+            일반 로그인으로 돌아가기
+          </button>
         </div>
       </div>
     );
@@ -36,10 +106,19 @@ export default function AdminHub() {
   // 로그인 후 (메뉴판)
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      <h1 className="text-2xl font-bold text-center mb-8 text-gray-800">관리자 메뉴</h1>
+      <div className="flex justify-between items-center mb-8 max-w-md mx-auto">
+        <h1 className="text-2xl font-bold text-gray-800">관리자 메뉴</h1>
+        <button 
+          onClick={handleLogout}
+          className="text-sm bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition"
+        >
+          로그아웃
+        </button>
+      </div>
       
       <div className="grid grid-cols-2 gap-4 max-w-md mx-auto">
         <MenuCard title="📋 출석·회원" desc="활동정보 및 학기 관리" onClick={() => router.push("/admin/attendance")} color="bg-blue-600" />
+        <MenuCard title="👥 회원 관리" desc="회원 등록/수정/삭제" onClick={() => router.push("/admin/members")} color="bg-purple-600" />
         <MenuCard title="💰 회계·재고" desc="셔틀콕 주문 및 재고" onClick={() => router.push("/admin/accounting")} color="bg-green-600" />
         <MenuCard title="🏸 경기 운영" desc="(준비중)" onClick={() => router.push("/admin/game")} color="bg-gray-400" />
         <MenuCard title="🎓 레슨 관리" desc="(준비중)" onClick={() => router.push("/admin/lesson")} color="bg-gray-400" />
@@ -48,7 +127,14 @@ export default function AdminHub() {
   );
 }
 
-function MenuCard({ title, desc, onClick, color }: any) {
+interface MenuCardProps {
+  title: string;
+  desc: string;
+  onClick: () => void;
+  color: string;
+}
+
+function MenuCard({ title, desc, onClick, color }: MenuCardProps) {
   return (
     <div onClick={onClick} className={`${color} text-white p-6 rounded-xl shadow-lg cursor-pointer hover:opacity-90 transition flex flex-col items-center justify-center h-40`}>
       <h2 className="text-xl font-bold mb-2">{title}</h2>

@@ -4,8 +4,10 @@ import { db } from "@/lib/firebase";
 import { collection, onSnapshot, query } from "firebase/firestore";
 import StockSelector from "@/app/components/StockSelector"; // 방금 만든 부품 가져오기
 
+import { InventoryItem } from "@/types";
+
 export default function PurchasePage() {
-  const [inventory, setInventory] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [userName, setUserName] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -22,7 +24,7 @@ export default function PurchasePage() {
     // 2. 재고 실시간 구독 (누가 사면 내 화면도 바로 바뀜!)
     const q = query(collection(db, "inventory"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(d => d.data()).sort((a: any, b: any) => {
+      const list = snapshot.docs.map(d => d.data() as InventoryItem).sort((a, b) => {
         // 박스 번호 -> 번호 순 정렬
         if (a.box !== b.box) return a.box - b.box;
         return a.number - b.number;

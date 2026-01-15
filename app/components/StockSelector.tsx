@@ -142,8 +142,9 @@ export default function StockSelector({ inventory, userName }: Props) {
       alert("신청 완료! 입금 후 총무 승인을 기다려주세요.");
       setSelectedIds([]); // 선택 초기화
       window.location.reload(); // 새로고침해서 현황 업데이트
-    } catch (e: any) {
-      alert("구매 실패: " + e.message);
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : "알 수 없는 오류";
+      alert("구매 실패: " + errorMessage);
     }
     setProcessing(false);
   };

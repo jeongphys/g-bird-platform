@@ -1,14 +1,20 @@
-// seed.js (데이터 업로드용 스크립트)
-// Firebase Admin SDK 사용 (서버 사이드, 보안 규칙 우회)
+// seed-admin.js (Firebase Admin SDK 사용 - 서비스 계정 키 필요)
 const admin = require("firebase-admin");
 const path = require("path");
 
-// 서비스 계정 키 파일 사용
-const serviceAccount = require("./serviceAccountKey.json");
+// 서비스 계정 키 파일 경로 (생성 후 경로 지정)
+// const serviceAccount = require("./serviceAccountKey.json");
 
-// Admin SDK 초기화
+// 방법 1: 서비스 계정 키 파일 사용
+// admin.initializeApp({
+//   credential: admin.credential.cert(serviceAccount),
+//   projectId: "g-bird-platform"
+// });
+
+// 방법 2: 환경 변수 사용 (권장)
+// GOOGLE_APPLICATION_CREDENTIALS 환경 변수에 서비스 계정 키 경로 설정
+// 또는 gcloud auth application-default login 실행 후
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
   projectId: "g-bird-platform"
 });
 
@@ -19,12 +25,11 @@ async function seedData() {
 
   console.log("🚀 데이터 업로드를 시작합니다...");
 
-  // 1. 회원 데이터 생성 (Users) - 스프레드시트 분석 기반
-  // ID는 "이름(구분자)" 형태를 사용
+  // 1. 회원 데이터 생성 (Users)
   const users = [
-    { id: "정민우", status: "active", attendanceScore: 10, discount: 500 }, // 회장
+    { id: "정민우", status: "active", attendanceScore: 10, discount: 500, isAdmin: true },
     { id: "김민수(물리)", status: "active", attendanceScore: 5, discount: 0 },
-    { id: "박지성(체육)", status: "resting", attendanceScore: 0, discount: 0 }, // 휴회
+    { id: "박지성(체육)", status: "resting", attendanceScore: 0, discount: 0 },
   ];
 
   users.forEach((user) => {
@@ -35,13 +40,13 @@ async function seedData() {
       attendanceScore: user.attendanceScore,
       shuttleDiscount: user.discount,
       isActive: user.status === "active",
-      isAdmin: user.id === "정민우" ? true : false, // 정민우를 관리자로 설정
-      history: {}
+      isAdmin: user.isAdmin || false,
+      history: {},
+      createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
   });
 
-  // 2. 셔틀콕 재고 생성 (Inventory) - 5박스, 박스당 25개(예시)
-  // 문서 ID: "1-1", "1-2" ... "5-25"
+  // 2. 셔틀콕 재고 생성 (Inventory) - 5박스, 박스당 25개
   for (let box = 1; box <= 5; box++) {
     for (let num = 1; num <= 25; num++) {
       const id = `${box}-${num}`;
@@ -51,7 +56,7 @@ async function seedData() {
         box: box,
         number: num,
         price: 16000,
-        isSold: false, // 판매 안 됨
+        isSold: false,
         soldTo: null
       });
     }

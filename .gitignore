@@ -33,6 +33,14 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# Firebase service account key
+serviceAccountKey.json
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!next-env.d.ts
+
 # vercel
 .vercel
 

@@ -23,7 +23,7 @@ export default function Home() {
       if (userName === "admin" || userName === "admin1234") {
         router.push("/admin");
       } else {
-        router.push("/purchase");
+        router.push("/dashboard");
       }
     }
   }, [router, isClient]);
