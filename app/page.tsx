@@ -1,77 +1,84 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import Link from "next/link";
+import { getUserFromLocalStorage, getCurrentUser } from "@/lib/auth";
 
 export default function Home() {
-  const [name, setName] = useState("");
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const [isClient, setIsClient] = useState(false);
 
-  const handleLogin = async () => {
-    if (!name.trim()) return alert("이름을 입력해주세요.");
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
-    // [추가된 부분] 관리자 키워드 입력 시 바로 관리자 페이지로 이동
-    if (name === "admin" || name === "admin1234") {
-      router.push("/admin");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      // 일반 회원 로그인 로직 (기존과 동일)
-      const userRef = doc(db, "users", name.trim());
-      const userSnap = await getDoc(userRef);
-
-      if (userSnap.exists()) {
-        const userData = userSnap.data();
-        
-        localStorage.setItem("userName", userData.name);
-        localStorage.setItem("shuttleDiscount", userData.shuttleDiscount || 0);
-        
-        if (!userData.isActive) {
-          alert("현재 활동 중인 회원이 아닙니다.");
-        } else {
-          router.push("/purchase");
-        }
+  // 로그인된 사용자는 자동 리다이렉트
+  useEffect(() => {
+    if (!isClient) return;
+    
+    const { userName } = getUserFromLocalStorage();
+    const firebaseUser = getCurrentUser();
+    
+    if (userName || firebaseUser) {
+      if (userName === "admin" || userName === "admin1234") {
+        router.push("/admin");
       } else {
-        alert("등록된 회원이 아닙니다. (예: 정민우)");
+        router.push("/purchase");
       }
-    } catch (error) {
-      console.error(error);
-      alert("시스템 오류가 발생했습니다.");
     }
-    setLoading(false);
-  };
+  }, [router, isClient]);
+
+  if (!isClient) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
+        <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">로딩 중...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    // ... (아래 화면 코드는 기존과 동일하니 건드리지 마세요)
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-lg border border-gray-100">
-        <h1 className="text-3xl font-bold text-center text-blue-600 mb-2">G-Bird</h1>
-        <p className="text-center text-gray-500 mb-8">배드민턴 클럽 운영 플랫폼</p>
+      <div className="w-full max-w-2xl bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+        <div className="text-center mb-8">
+          <h1 className="text-4xl font-bold text-blue-600 mb-2">G-Bird</h1>
+          <p className="text-gray-600">배드민턴 클럽 운영 플랫폼</p>
+        </div>
         
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">성명</label>
-            <input
-              type="text"
-              placeholder="이름 입력 (관리자는 admin 입력)"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-              className="w-full p-4 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-black"
-            />
-          </div>
-          <button 
-            onClick={handleLogin}
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold hover:bg-blue-700 transition disabled:bg-gray-400"
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <Link
+            href="/auth/login"
+            className="block p-6 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-center font-semibold"
           >
-            {loading ? "확인 중..." : "입장하기"}
-          </button>
+            로그인
+          </Link>
+          <Link
+            href="/notice"
+            className="block p-6 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-center font-semibold"
+          >
+            공지사항
+          </Link>
+          <Link
+            href="/freeboard"
+            className="block p-6 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-center font-semibold"
+          >
+            자유게시판
+          </Link>
+          <Link
+            href="/album"
+            className="block p-6 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-center font-semibold"
+          >
+            앨범
+          </Link>
+        </div>
+
+        <div className="text-center text-sm text-gray-500">
+          <p>로그인 없이도 공지사항, 자유게시판, 앨범을 이용할 수 있습니다.</p>
+          <p className="mt-1">구매 및 출석 체크는 로그인이 필요합니다.</p>
         </div>
       </div>
     </div>

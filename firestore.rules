@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 사용자 데이터: 이름 기반 로그인을 위해 공개 읽기 허용, 쓰기는 인증된 사용자만
+    match /users/{userId} {
+      allow read: if true; // 이름 기반 로그인을 위해 공개 읽기 허용
+      allow write: if request.auth != null && (request.auth.uid == userId || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true);
+    }
+    
+    // 세션 데이터: 모든 인증된 사용자 읽기, API 라우트에서만 쓰기
+    match /sessions/{sessionId} {
+      allow read: if request.auth != null;
+      allow write: if false; // API 라우트에서만 쓰기
+    }
+    
+    // 공지사항: 모든 사용자 읽기, 관리자만 쓰기
+    match /notices/{noticeId} {
+      allow read: if true;
+      allow write: if false; // 관리자 페이지에서만 쓰기 (서버 사이드 검증)
+    }
+    
+    // 자유게시판: 모든 사용자 읽기/쓰기
+    match /freeboard/{postId} {
+      allow read: if true;
+      allow create: if true;
+      allow delete: if true; // 비밀번호로 보호됨
+    }
+    
+    // 앨범: 인증된 사용자만 읽기/쓰기
+    match /albums/{albumId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    match /albumImages/{imageId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+    }
+    
+    // 재고: 공개 읽기 (구매 페이지에서 확인 필요), 관리자만 쓰기
+    match /inventory/{itemId} {
+      allow read: if true; // 로그인 없이도 재고 확인 가능
+      allow write: if false; // 관리자 페이지에서만 쓰기 (서버 사이드 검증)
+    }
+    
+    // 주문: 본인 주문만 읽기, 본인만 생성
+    match /orders/{orderId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if false; // 관리자 페이지에서만 업데이트 (서버 사이드 검증)
+    }
+    
+    // 학기: 공개 읽기
+    match /semesters/{semesterId} {
+      allow read: if true; // 로그인 없이도 학기 정보 확인 가능
+      allow write: if false; // 관리자 페이지에서만 쓰기 (서버 사이드 검증)
+    }
+  }
+}
