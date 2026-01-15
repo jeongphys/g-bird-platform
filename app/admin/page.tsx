@@ -16,12 +16,19 @@ export default function AdminHub() {
       const { userName, userId, authMethod } = getUserFromLocalStorage();
       const firebaseUser = getCurrentUser();
       
-      // 세션 스토리지 확인 (기존 방식)
+      // 세션 스토리지 확인 (비밀번호 인증 완료 여부)
       const sessionAuth = sessionStorage.getItem("adminAuth");
       
-      // 관리자 키워드 확인
-      if (userName === "admin" || userName === "admin1234" || userId === "admin" || userId === "admin1234" || sessionAuth === "true") {
+      // 세션 인증이 있으면 통과 (비밀번호 입력 완료)
+      if (sessionAuth === "true") {
         setIsAuth(true);
+        setChecking(false);
+        return;
+      }
+      
+      // admin 이름으로 로그인했지만 비밀번호 입력 전이면 비밀번호 입력 화면 표시
+      if (userName === "admin" || userName === "admin1234" || userId === "admin" || userId === "admin1234") {
+        setIsAuth(false); // 비밀번호 입력 필요
         setChecking(false);
         return;
       }
@@ -30,7 +37,8 @@ export default function AdminHub() {
       if (firebaseUser) {
         const adminStatus = await isAdmin(firebaseUser.uid);
         if (adminStatus) {
-          setIsAuth(true);
+          // Firebase 관리자도 비밀번호 입력 필요
+          setIsAuth(false);
         }
       }
       
@@ -93,7 +101,7 @@ export default function AdminHub() {
             접속
           </button>
           <button 
-            onClick={() => router.push("/auth/login")} 
+            onClick={() => router.push("/")} 
             className="mt-2 text-sm text-gray-500 hover:text-gray-700"
           >
             일반 로그인으로 돌아가기

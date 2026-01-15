@@ -5,7 +5,7 @@ export interface User {
   studentId?: string;
   email?: string;
   isActive: boolean;
-  history?: { [semester: string]: "O" | "X" };
+  history?: { [semester: string]: string };
   shuttleDiscount: number;
   attendanceScore: number;
   createdAt?: Date;

@@ -50,7 +50,7 @@ export default function AttendanceAdmin() {
         </div>
         <div className="flex overflow-x-auto gap-2 pb-2 no-scrollbar">
           <button onClick={() => setActiveTab("master")} className={`whitespace-nowrap px-4 py-2 rounded-full font-bold text-sm transition ${activeTab === "master" ? "bg-blue-800 text-white" : "bg-gray-100 text-gray-600"}`}>
-            📂 전체기록
+            📂 활동정보
           </button>
           <button onClick={() => setActiveTab("stats")} className={`whitespace-nowrap px-4 py-2 rounded-full font-bold text-sm transition ${activeTab === "stats" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600"}`}>
             📊 통계
@@ -374,37 +374,213 @@ function SemesterMemberEditor({ semester, onFinish }: SemesterMemberEditorProps)
 }
 
 // ============================================================================
-// 컴포넌트 4: 전체 기록 뷰 (기존과 동일)
+// 컴포넌트 4: 활동정보 뷰 (엑셀 형식, 편집 가능)
 // ============================================================================
 interface MasterTableViewProps {
   semesters: string[];
 }
 
 function MasterTableView({ semesters }: MasterTableViewProps) {
-  const [members, setMembers] = useState<any[]>([]);
+  const [members, setMembers] = useState<User[]>([]);
+  const [editingCell, setEditingCell] = useState<{memberId: string, semester: string} | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [hasChanges, setHasChanges] = useState(false);
+  const [localHistory, setLocalHistory] = useState<{[memberId: string]: {[semester: string]: string}}>({});
+
   useEffect(() => {
     getDocs(collection(db, "users")).then(snap => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as User));
       list.sort((a, b) => a.name.localeCompare(b.name));
       setMembers(list);
+      
+      // 로컬 히스토리 초기화
+      const history: {[memberId: string]: {[semester: string]: string}} = {};
+      list.forEach(m => {
+        history[m.id] = { ...m.history };
+      });
+      setLocalHistory(history);
     });
   }, []);
 
+  const getCellValue = (memberId: string, semester: string): string => {
+    if (localHistory[memberId]?.[semester] !== undefined) {
+      return localHistory[memberId][semester] || "";
+    }
+    return members.find(m => m.id === memberId)?.history?.[semester] || "";
+  };
+
+  const getCellStyle = (value: string): string => {
+    if (!value || value === "-") return "bg-gray-50 text-gray-400";
+    if (value === "O") return "bg-green-100 text-green-800 font-bold";
+    if (value === "X") return "bg-gray-200 text-gray-600";
+    if (value.includes("명예회원")) return "bg-blue-100 text-blue-800";
+    if (value.includes("선발")) return "bg-yellow-100 text-yellow-800";
+    if (value.includes("출석 미달") || value.includes("출석미달") || value.includes("제적")) return "bg-red-100 text-red-800";
+    return "bg-white text-gray-800";
+  };
+
+  const handleCellClick = (memberId: string, semester: string) => {
+    setEditingCell({ memberId, semester });
+    setEditValue(getCellValue(memberId, semester));
+  };
+
+  const handleCellSave = () => {
+    if (!editingCell) return;
+    
+    const { memberId, semester } = editingCell;
+    setLocalHistory(prev => ({
+      ...prev,
+      [memberId]: {
+        ...prev[memberId],
+        [semester]: editValue.trim() || ""
+      }
+    }));
+    setHasChanges(true);
+    setEditingCell(null);
+    setEditValue("");
+  };
+
+  const handleCellCancel = () => {
+    setEditingCell(null);
+    setEditValue("");
+  };
+
+  const handleSaveAll = async () => {
+    if (!confirm("모든 변경사항을 저장하시겠습니까?")) return;
+    
+    try {
+      const batch = writeBatch(db);
+      let updateCount = 0;
+      
+      Object.keys(localHistory).forEach(memberId => {
+        const memberHistory = localHistory[memberId];
+        const member = members.find(m => m.id === memberId);
+        if (!member) return;
+        
+        // 변경된 항목만 업데이트
+        const updates: {[key: string]: string} = {};
+        Object.keys(memberHistory).forEach(semester => {
+          const newValue = memberHistory[semester] || "";
+          const oldValue = member.history?.[semester] || "";
+          if (newValue !== oldValue) {
+            updates[`history.${semester}`] = newValue;
+          }
+        });
+        
+        if (Object.keys(updates).length > 0) {
+          batch.update(doc(db, "users", memberId), updates);
+          updateCount++;
+        }
+      });
+      
+      if (updateCount > 0) {
+        await batch.commit();
+        alert(`${updateCount}명의 정보가 저장되었습니다.`);
+        setHasChanges(false);
+        
+        // 데이터 다시 로드
+        const snap = await getDocs(collection(db, "users"));
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as User));
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        setMembers(list);
+        
+        const history: {[memberId: string]: {[semester: string]: string}} = {};
+        list.forEach(m => {
+          history[m.id] = { ...m.history };
+        });
+        setLocalHistory(history);
+      } else {
+        alert("변경된 내용이 없습니다.");
+      }
+    } catch (error) {
+      console.error("저장 오류:", error);
+      alert("저장 중 오류가 발생했습니다.");
+    }
+  };
+
   return (
-    <div className="bg-white rounded shadow overflow-x-auto">
-      <table className="w-full text-sm text-left whitespace-nowrap">
-        <thead className="bg-gray-100 border-b">
-          <tr><th className="p-3 sticky left-0 bg-gray-100 border-r">이름</th>{semesters.map((s:string) => <th key={s} className="p-3 border-r text-center">{s}</th>)}</tr>
-        </thead>
-        <tbody>
-          {members.map(m => (
-            <tr key={m.id} className="border-b hover:bg-gray-50">
-              <td className="p-3 sticky left-0 bg-white border-r font-bold">{m.name}</td>
-              {semesters.map((s:string) => <td key={s} className="p-3 text-center border-r">{m.history?.[s]==="O"?<span className="text-green-600 font-bold">O</span>:<span className="text-gray-300">-</span>}</td>)}
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h2 className="text-lg font-bold">활동정보</h2>
+        {hasChanges && (
+          <button
+            onClick={handleSaveAll}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700"
+          >
+            💾 저장하기
+          </button>
+        )}
+      </div>
+      
+      <div className="bg-white rounded shadow overflow-x-auto">
+        <table className="w-full text-sm text-left whitespace-nowrap">
+          <thead className="bg-gray-100 border-b sticky top-0 z-10">
+            <tr>
+              <th className="p-3 sticky left-0 bg-gray-100 border-r z-20">이름</th>
+              {semesters.map((s: string) => (
+                <th key={s} className="p-3 border-r text-center min-w-[120px]">{s}</th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {members.map(m => (
+              <tr key={m.id} className="border-b hover:bg-gray-50">
+                <td className="p-3 sticky left-0 bg-white border-r font-bold z-10">{m.name}</td>
+                {semesters.map((s: string) => {
+                  const isEditing = editingCell?.memberId === m.id && editingCell?.semester === s;
+                  const value = getCellValue(m.id, s);
+                  const cellStyle = getCellStyle(value);
+                  
+                  return (
+                    <td
+                      key={s}
+                      className={`p-2 text-center border-r cursor-pointer min-w-[120px] ${!isEditing ? cellStyle : "bg-blue-50"}`}
+                      onClick={() => !isEditing && handleCellClick(m.id, s)}
+                    >
+                      {isEditing ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="text"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleCellSave();
+                              if (e.key === "Escape") handleCellCancel();
+                            }}
+                            className="flex-1 px-2 py-1 border rounded text-black text-xs"
+                            autoFocus
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCellSave();
+                            }}
+                            className="text-xs bg-blue-600 text-white px-2 py-1 rounded"
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCellCancel();
+                            }}
+                            className="text-xs bg-gray-400 text-white px-2 py-1 rounded"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs">{value || "-"}</span>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

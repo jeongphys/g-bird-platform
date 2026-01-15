@@ -15,7 +15,7 @@ export default function Home() {
       return;
     }
 
-    // 관리자 키워드 확인
+    // 관리자 키워드 확인 - 비밀번호 입력을 위해 /admin으로 리다이렉트
     if (name === "admin" || name === "admin1234") {
       saveUserToLocalStorage(
         { id: "admin", name: "admin", isAdmin: true, isActive: true, shuttleDiscount: 0, attendanceScore: 0 },
