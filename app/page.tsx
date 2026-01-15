@@ -1,84 +1,82 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { getUserFromLocalStorage, getCurrentUser } from "@/lib/auth";
+import { getUserByName, saveUserToLocalStorage } from "@/lib/auth";
 
 export default function Home() {
   const router = useRouter();
-  const [isClient, setIsClient] = useState(false);
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
+  // 이름 기반 로그인
+  const handleNameLogin = async () => {
+    if (!name.trim()) {
+      alert("이름을 입력해주세요.");
+      return;
+    }
 
-  // 로그인된 사용자는 자동 리다이렉트
-  useEffect(() => {
-    if (!isClient) return;
-    
-    const { userName } = getUserFromLocalStorage();
-    const firebaseUser = getCurrentUser();
-    
-    if (userName || firebaseUser) {
-      if (userName === "admin" || userName === "admin1234") {
-        router.push("/admin");
+    // 관리자 키워드 확인
+    if (name === "admin" || name === "admin1234") {
+      saveUserToLocalStorage(
+        { id: "admin", name: "admin", isAdmin: true, isActive: true, shuttleDiscount: 0, attendanceScore: 0 },
+        "name"
+      );
+      router.push("/admin");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const userData = await getUserByName(name.trim());
+
+      if (!userData) {
+        alert("등록된 회원이 아닙니다.");
+        setLoading(false);
+        return;
+      }
+
+      // 로컬 스토리지에 저장
+      saveUserToLocalStorage(userData, "name");
+
+      if (!userData.isActive) {
+        alert("현재 활동 중인 회원이 아닙니다.");
+        setLoading(false);
       } else {
         router.push("/dashboard");
       }
+    } catch (error) {
+      console.error(error);
+      alert("시스템 오류가 발생했습니다.");
+      setLoading(false);
     }
-  }, [router, isClient]);
-
-  if (!isClient) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
-        <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-lg border border-gray-100">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">로딩 중...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  };
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
-      <div className="w-full max-w-2xl bg-white p-8 rounded-xl shadow-lg border border-gray-100">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-blue-600 mb-2">G-Bird</h1>
-          <p className="text-gray-600">배드민턴 클럽 운영 플랫폼</p>
-        </div>
+      <div className="w-full max-w-md bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+        <h1 className="text-3xl font-bold text-center text-blue-600 mb-8">G-Bird</h1>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <Link
-            href="/auth/login"
-            className="block p-6 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-center font-semibold"
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">성명</label>
+            <input
+              type="text"
+              placeholder="이름을 입력하세요"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleNameLogin()}
+              className="w-full p-4 border rounded-lg bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none text-black"
+              autoFocus
+            />
+          </div>
+          <button 
+            onClick={handleNameLogin}
+            disabled={loading}
+            className="w-full bg-blue-600 text-white py-4 rounded-lg font-bold hover:bg-blue-700 transition disabled:bg-gray-400"
           >
-            로그인
-          </Link>
-          <Link
-            href="/notice"
-            className="block p-6 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-center font-semibold"
-          >
-            공지사항
-          </Link>
-          <Link
-            href="/freeboard"
-            className="block p-6 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-center font-semibold"
-          >
-            자유게시판
-          </Link>
-          <Link
-            href="/album"
-            className="block p-6 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition text-center font-semibold"
-          >
-            앨범
-          </Link>
-        </div>
-
-        <div className="text-center text-sm text-gray-500">
-          <p>로그인 없이도 공지사항, 자유게시판, 앨범을 이용할 수 있습니다.</p>
-          <p className="mt-1">구매 및 출석 체크는 로그인이 필요합니다.</p>
+            {loading ? "확인 중..." : "로그인"}
+          </button>
         </div>
       </div>
     </div>
