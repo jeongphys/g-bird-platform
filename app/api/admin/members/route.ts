@@ -1,24 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import admin from "firebase-admin";
-import path from "path";
 
 // Firebase Admin SDK 초기화 (서버 사이드)
-if (!admin.apps.length) {
-  try {
-    const serviceAccount = require(path.join(process.cwd(), "serviceAccountKey.json"));
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      projectId: "g-bird-platform"
-    });
-  } catch (error) {
-    console.error("Firebase Admin 초기화 실패:", error);
+function getAdminDb(): admin.firestore.Firestore {
+  if (!admin.apps.length) {
+    try {
+      // 런타임에 동적으로 로드
+      const fs = require("fs");
+      const path = require("path");
+      const serviceAccountPath = path.join(process.cwd(), "serviceAccountKey.json");
+      
+      if (fs.existsSync(serviceAccountPath)) {
+        const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf8"));
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+          projectId: "g-bird-platform"
+        });
+      } else {
+        // Vercel 환경 변수 사용 (환경 변수로 설정 가능)
+        const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+        if (serviceAccountJson) {
+          const serviceAccount = JSON.parse(serviceAccountJson);
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            projectId: "g-bird-platform"
+          });
+        } else {
+          throw new Error("Firebase service account not found");
+        }
+      }
+    } catch (error) {
+      console.error("Firebase Admin 초기화 실패:", error);
+      throw error;
+    }
   }
+  return admin.firestore();
 }
-
-const adminDb = admin.firestore();
 
 export async function DELETE(request: NextRequest) {
   try {
+    const adminDb = getAdminDb();
     const { searchParams } = new URL(request.url);
     const memberId = searchParams.get("id");
     
@@ -39,6 +60,7 @@ export async function DELETE(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
+    const adminDb = getAdminDb();
     const body = await request.json();
     const { memberId, updates } = body;
     
