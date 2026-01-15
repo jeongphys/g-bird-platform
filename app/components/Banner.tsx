@@ -15,7 +15,7 @@ export default function Banner({ imageUrl, alt = "G-Bird 배너" }: BannerProps)
 
   return (
     <div
-      className="w-full h-48 md:h-64 lg:h-80 relative overflow-hidden rounded-lg shadow-lg"
+      className="w-full h-48 md:h-64 lg:h-80 relative overflow-hidden"
       style={bannerStyle}
     >
       {imageUrl ? (

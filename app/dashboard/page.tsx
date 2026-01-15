@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
-import { getUserFromLocalStorage, isAdmin } from "@/lib/auth";
+import { getUserFromLocalStorage, isAdmin, signOut, clearLocalStorage } from "@/lib/auth";
 import { Order } from "@/types";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -185,20 +185,43 @@ function AdminDashboard() {
 function MemberDashboard({ userName }: { userName: string }) {
   const router = useRouter();
 
+  const handleLogout = async () => {
+    try {
+      // Firebase 로그아웃
+      await signOut();
+      // 로컬 스토리지 클리어
+      clearLocalStorage();
+      // 로그인 페이지로 이동
+      router.push("/auth/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+      // 에러가 발생해도 로컬 스토리지는 클리어하고 로그인 페이지로 이동
+      clearLocalStorage();
+      router.push("/auth/login");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* 헤더 */}
       <div className="bg-white p-4 shadow sticky top-0 z-20">
         <div className="flex justify-between items-center">
-          <button onClick={() => router.push("/")} className="text-gray-500 font-bold">← 홈</button>
-          <h1 className="text-xl font-bold">메인페이지</h1>
-          <div className="w-10"></div>
+          <button 
+            onClick={handleLogout} 
+            className="text-red-600 font-bold hover:text-red-700 transition"
+          >
+            로그아웃
+          </button>
+          <h1 className="text-xl font-bold">{userName} 님으로 로그인 되었습니다.</h1>
+          <div className="w-20"></div>
         </div>
       </div>
 
-      <div className="p-4 max-w-6xl mx-auto space-y-6">
-        {/* 1. 배너 */}
+      <div className="space-y-6">
+        {/* 1. 배너 (좌우 여백 없이) */}
         <Banner />
+        
+        <div className="p-4 max-w-6xl mx-auto space-y-6">
 
         {/* 2. 대시보드 위젯 (출석왕, 조별 점수) */}
         <DashboardWidget />
@@ -214,8 +237,9 @@ function MemberDashboard({ userName }: { userName: string }) {
           </div>
         </div>
 
-        {/* 4. 자유게시판 위젯 */}
-        <FreeboardWidget />
+          {/* 4. 자유게시판 위젯 */}
+          <FreeboardWidget />
+        </div>
       </div>
     </div>
   );
