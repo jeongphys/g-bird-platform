@@ -4,9 +4,12 @@ import { useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
 import { getUserFromLocalStorage, isAdmin } from "@/lib/auth";
-import { Order, Session, Notice, FreeboardPost } from "@/types";
+import { Order } from "@/types";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
+import Banner from "@/app/components/Banner";
+import DashboardWidget from "@/app/components/DashboardWidget";
+import FreeboardWidget from "@/app/components/FreeboardWidget";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -178,233 +181,41 @@ function AdminDashboard() {
   );
 }
 
-// 회원 대시보드
+// 회원 대시보드 (메인페이지)
 function MemberDashboard({ userName }: { userName: string }) {
   const router = useRouter();
-  const [myOrders, setMyOrders] = useState<Order[]>([]);
-  const [recentNotices, setRecentNotices] = useState<Notice[]>([]);
-  const [recentFreeboard, setRecentFreeboard] = useState<FreeboardPost[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadAllData();
-  }, [userName]);
-
-  const loadAllData = async () => {
-    setLoading(true);
-    await Promise.all([
-      loadMyOrders(),
-      loadRecentNotices(),
-      loadRecentFreeboard()
-    ]);
-    setLoading(false);
-  };
-
-  const loadMyOrders = async () => {
-    if (!userName) return;
-
-    try {
-      const ordersQuery = query(
-        collection(db, "orders"),
-        where("userName", "==", userName),
-        orderBy("createdAt", "desc")
-      );
-      const snapshot = await getDocs(ordersQuery);
-      const orders = snapshot.docs.slice(0, 5).map(d => ({
-        id: d.id,
-        ...d.data()
-      } as Order));
-      setMyOrders(orders);
-    } catch (error) {
-      console.error("Error loading orders:", error);
-    }
-  };
-
-  const loadRecentNotices = async () => {
-    try {
-      const noticesCol = collection(db, "notices");
-      // createdAt으로 정렬 (order 필드는 클라이언트에서 정렬)
-      const q = query(noticesCol, orderBy("createdAt", "desc"));
-      const snapshot = await getDocs(q);
-      
-      const list: Notice[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        list.push({
-          id: doc.id,
-          title: data.title || "",
-          content: data.content || "",
-          author: data.author || "관리자",
-          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString(),
-          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || new Date().toISOString(),
-          isPinned: data.isPinned || false
-        });
-      });
-
-      // 고정 공지 먼저, 그 다음 일반 공지
-      list.sort((a, b) => {
-        if (a.isPinned && !b.isPinned) return -1;
-        if (!a.isPinned && b.isPinned) return 1;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      });
-
-      setRecentNotices(list.slice(0, 5));
-    } catch (error) {
-      console.error("Error loading notices:", error);
-    }
-  };
-
-  const loadRecentFreeboard = async () => {
-    try {
-      const postsCol = collection(db, "freeboard");
-      const q = query(postsCol, orderBy("createdAt", "desc"));
-      const snapshot = await getDocs(q);
-      
-      const list: FreeboardPost[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        list.push({
-          id: doc.id,
-          content: data.content || "",
-          author: data.author || "익명",
-          color: data.color || 1,
-          password: data.password || "",
-          createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt || new Date().toISOString(),
-          updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt || new Date().toISOString()
-        });
-      });
-      setRecentFreeboard(list.slice(0, 5));
-    } catch (error) {
-      console.error("Error loading freeboard:", error);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
+      {/* 헤더 */}
       <div className="bg-white p-4 shadow sticky top-0 z-20">
         <div className="flex justify-between items-center">
           <button onClick={() => router.push("/")} className="text-gray-500 font-bold">← 홈</button>
-          <h1 className="text-xl font-bold">대시보드</h1>
+          <h1 className="text-xl font-bold">메인페이지</h1>
           <div className="w-10"></div>
         </div>
       </div>
 
-      <div className="p-4 max-w-6xl mx-auto">
-        {loading ? (
-          <div className="text-center py-10 text-gray-500">로딩 중...</div>
-        ) : (
-          <div className="space-y-6">
-            {/* 환영 메시지 및 빠른 링크 */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-bold mb-4">안녕하세요, {userName}님! 👋</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <QuickLink title="셔틀콕 구매" onClick={() => router.push("/purchase")} color="bg-blue-600" />
-                <QuickLink title="공지사항" onClick={() => router.push("/notice")} color="bg-orange-600" />
-                <QuickLink title="자유게시판" onClick={() => router.push("/freeboard")} color="bg-pink-600" />
-                <QuickLink title="앨범" onClick={() => router.push("/album")} color="bg-purple-600" />
-              </div>
-            </div>
+      <div className="p-4 max-w-6xl mx-auto space-y-6">
+        {/* 1. 배너 */}
+        <Banner />
 
-            {/* 위젯 그리드 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* 공지사항 위젯 */}
-              <WidgetCard
-                title="📢 최신 공지사항"
-                onViewAll={() => router.push("/notice")}
-              >
-                {recentNotices.length === 0 ? (
-                  <p className="text-gray-400 text-sm">공지사항이 없습니다.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {recentNotices.map(notice => (
-                      <div
-                        key={notice.id}
-                        onClick={() => router.push(`/notice/${notice.id}`)}
-                        className="p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition"
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          {notice.isPinned && (
-                            <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-bold">고정</span>
-                          )}
-                          <h3 className="font-bold text-sm text-gray-800 line-clamp-1">{notice.title}</h3>
-                        </div>
-                        <p className="text-xs text-gray-500">
-                          {format(new Date(notice.createdAt), "MM월 dd일", { locale: ko })}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </WidgetCard>
+        {/* 2. 대시보드 위젯 (출석왕, 조별 점수) */}
+        <DashboardWidget />
 
-              {/* 자유게시판 위젯 */}
-              <WidgetCard
-                title="💬 최신 자유게시판"
-                onViewAll={() => router.push("/freeboard")}
-              >
-                {recentFreeboard.length === 0 ? (
-                  <p className="text-gray-400 text-sm">게시글이 없습니다.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {recentFreeboard.map(post => {
-                      const colorClasses = [
-                        { bg: "bg-yellow-50", border: "border-yellow-300" },
-                        { bg: "bg-pink-50", border: "border-pink-300" },
-                        { bg: "bg-blue-50", border: "border-blue-300" },
-                        { bg: "bg-green-50", border: "border-green-300" },
-                        { bg: "bg-purple-50", border: "border-purple-300" },
-                      ];
-                      const color = colorClasses[(post.color - 1) || 0];
-                      return (
-                        <div
-                          key={post.id}
-                          onClick={() => router.push("/freeboard")}
-                          className={`p-3 ${color.bg} border ${color.border} rounded-lg cursor-pointer hover:opacity-80 transition`}
-                        >
-                          <p className="text-sm text-gray-800 line-clamp-2 mb-1">{post.content}</p>
-                          <p className="text-xs text-gray-500">
-                            {post.author} · {format(new Date(post.createdAt), "MM월 dd일", { locale: ko })}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </WidgetCard>
-            </div>
-
-            {/* 내 주문 내역 위젯 */}
-            {myOrders.length > 0 && (
-              <WidgetCard
-                title="🛒 내 주문 내역"
-                onViewAll={() => router.push("/purchase")}
-              >
-                <div className="space-y-2">
-                  {myOrders.map(order => (
-                    <div key={order.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <div className="font-bold text-sm">{order.items?.join(", ")}</div>
-                        <div className="text-xs text-gray-500">
-                          {format(new Date(order.createdAt), "yyyy.MM.dd HH:mm", { locale: ko })}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-blue-600 text-sm">{order.totalPrice?.toLocaleString()}원</div>
-                        <div className={`text-xs px-2 py-1 rounded ${
-                          order.status === "pending" ? "bg-yellow-100 text-yellow-700" :
-                          order.status === "approved" ? "bg-green-100 text-green-700" :
-                          "bg-red-100 text-red-700"
-                        }`}>
-                          {order.status === "pending" ? "대기" : order.status === "approved" ? "승인" : "반려"}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </WidgetCard>
-            )}
+        {/* 3. 바로가기 버튼 4개 */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-bold mb-4">빠른 메뉴</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <QuickLink title="셔틀콕 구매" onClick={() => router.push("/purchase")} color="bg-blue-600" />
+            <QuickLink title="공지사항" onClick={() => router.push("/notice")} color="bg-orange-600" />
+            <QuickLink title="앨범" onClick={() => router.push("/album")} color="bg-purple-600" />
+            <QuickLink title="회원정보" onClick={() => router.push("/profile")} color="bg-green-600" />
           </div>
-        )}
+        </div>
+
+        {/* 4. 자유게시판 위젯 */}
+        <FreeboardWidget />
       </div>
     </div>
   );
@@ -430,29 +241,3 @@ function QuickLink({ title, onClick, color }: { title: string; onClick: () => vo
   );
 }
 
-function WidgetCard({ 
-  title, 
-  children, 
-  onViewAll 
-}: { 
-  title: string; 
-  children: React.ReactNode; 
-  onViewAll?: () => void;
-}) {
-  return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-bold">{title}</h2>
-        {onViewAll && (
-          <button
-            onClick={onViewAll}
-            className="text-sm text-blue-600 hover:text-blue-700 font-semibold"
-          >
-            전체보기 →
-          </button>
-        )}
-      </div>
-      {children}
-    </div>
-  );
-}
